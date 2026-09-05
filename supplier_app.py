@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("📄 納期確認リスト 手配先別グループ分け ＆ 依頼書作成ツール")
-st.write("エクセルを読み込み、手配先別にグループ分け。指定された列（予備_0 〜 納品予定）までを抽出してExcelファイルを作成します。")
+st.write("エクセルを読み込み、手配先別にグループ分け。日付項目（受注日・指定納期・納品予定）を `****/**/**` 形式に整えてExcelファイルを作成します。")
 
 # --------------------------------------------------
 # 2. サイドバー：出力条件の設定（タイトル・返信期限）
@@ -58,25 +58,34 @@ if uploaded_file is not None:
         df_excel.columns = new_columns
         df_excel.columns = df_excel.columns.str.replace(r'[\r\n\s]', '', regex=True)
         
-        # --- 【重要】「納品予定」までの列に絞り込む（それ以降をカット） ---
+        # --- 日付列（受注日、指定納期、納品予定）のフォーマット変換 (****/**/** 形式) ---
+        date_cols = ["受注日", "指定納期", "納品予定"]
+        for d_col in date_cols:
+            if d_col in df_excel.columns:
+                # 日付型やタイムスタンプ、文字列をパースして YYYY/MM/DD に変換
+                parsed_dates = pd.to_datetime(df_excel[d_col], errors='coerce')
+                df_excel[d_col] = parsed_dates.dt.strftime('%Y/%m/%d')
+                # パースできなかった（もともと空欄や別の文字だった）ものは元の値（または空欄）に戻す
+                df_excel[d_col] = df_excel[d_col].fillna(df_excel[d_col].astype(str).replace(["NaT", "nan", "None"], ""))
+        
+        # --- 出力対象列を「納品予定」までに絞り込む ---
         target_columns = [
             "予備_0", "手配先", "受注№", "品番", "S番号", "部番", 
             "パネル名称", "注文番号", "図面番号", "数", "ユーザ材質", 
             "予定重量", "受注日", "指定納期", "納品予定"
         ]
         
-        # 実際にエクセルに存在する列だけに絞る（存在しない列名でエラーになるのを防ぐ）
         valid_target_cols = [col for col in target_columns if col in df_excel.columns]
         df_excel = df_excel[valid_target_cols]
         
-        st.success(f"エクセルファイルの読み込み成功（出力対象列を「納品予定」までに絞り込みました）！")
+        st.success(f"エクセルファイルの読み込み成功（日付を ****/**/** 形式に整形し、出力列を絞り込みました）！")
         
         with st.expander("👀 読み込んだエクセルデータのプレビュー（最初の5行）", expanded=True):
             st.dataframe(df_excel.head(), use_container_width=True)
             
         st.markdown("---")
         
-        # グループ分け基準の列を選択（"手配先" があればデフォルト）
+        # グループ分け基準の列を選択
         available_cols = list(df_excel.columns)
         default_index = 0
         for name in ["手配先", "手配先名", "発注先", "発注先名", "手配先番号"]:
